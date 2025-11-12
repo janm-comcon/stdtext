@@ -18,14 +18,27 @@ SCRUBBED_CSV = Path(r"C:\Temp\text_scrubbed.csv")
 COMPARE_CSV = Path(r"C:\Temp\text_scrubbed_compare.csv")
 
 ACTION_VERBS = [
-    "AFPRØVNING AF",
-    "ETABLERING AF",
-    "FEJLFINDING PÅ",
-    "INSTALLATION AF",
-    "MONTERING AF", 
-    "UDSKIFTNING AF", 
-    "OPSÆTNING AF",
-    "OPMÆRKNING AF",    
+    "demontering"
+    "etablering",
+    "fejlfinding"
+    "fejlsøgning"
+    "flytning",
+    "fræsning"
+    "installation",
+    "køb",
+    "levering",
+    "montering", 
+    "nedtagning",
+    "udskiftning",
+    "ombygning",
+    "opbevaring",
+    "ophængning", 
+    "opmærkning",
+    "opsætning",
+    "tilslutning",
+    "trækning",
+    "udkald",
+    "ændring"    
 ]
 
 ROOM_WORDS = {
@@ -127,22 +140,22 @@ def canonicalize_line(raw: str, corrector=None, counts=None) -> str:
 
 def main():
     try:
-        from invoice_style_tool import CorpusCorrector
+        from invoice_styler import corpus_corrector
     except Exception:
-        CorpusCorrector = None
+        corpus_corrector = None
 
     if not RAW_CSV.exists():
         print(f"File not found: {RAW_CSV}")
         return
 
-    df = pd.read_csv(RAW_CSV, sep=",", engine="python", encoding="cp1252", on_bad_lines="skip")
+    df = pd.read_csv(RAW_CSV, sep=";", engine="python", encoding="utf-8", on_bad_lines="skip")
     text_col = find_text_col(df)
     print("Detected text column:", text_col)
 
     corrector = None
-    if CorpusCorrector:
+    if corpus_corrector:
         try:
-            corrector = CorpusCorrector(df[text_col].astype(str).tolist(), max_edit=2)
+            corrector = corpus_corrector(df[text_col].astype(str).tolist(), max_edit=2)
             print("History-biased corrector initialized.")
         except Exception as e:
             print("Corrector init failed:", e)

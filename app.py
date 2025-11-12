@@ -1,19 +1,24 @@
-
 # -*- coding: utf-8 -*-
+import uvicorn
 import json, joblib, pandas as pd, re, threading
-from pathlib import Path
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
-from invoice_style_tool import InvoiceStyler
+from fastapi import FastAPI, HTTPException, Body
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 from sklearn.neighbors import NearestNeighbors
+from pathlib import Path
+from pydantic import BaseModel, Field
+from typing import Dict, List, Optional
+
+from invoice_styler import InvoiceStyler
+from corpus_corrector import CorpusCorrector
+from spell import spell, get_spell_dictionary_size
+
 
 HERE = Path(__file__).parent
 ART = HERE / "artifacts"
 
 # === CONFIG: RAW MASTER CSV PATH (Windows absolute path) ===
-RAW_MASTER_CSV = r"C:\Temp\text.csv"
+RAW_MASTER_CSV = r"C:\Temp\text_scrubbed.csv"
 
 class RewriteIn(BaseModel):
     text: str = Field(...)
@@ -44,18 +49,6 @@ _kmeans    = joblib.load(ART / "kmeans.pkl")
 _nn        = joblib.load(ART / "nn.pkl")
 _cleaned   = pd.read_csv(ART / "cleaned.csv")
 
-class CachedStyler(InvoiceStyler):
-    @classmethod
-    def from_artifacts(cls, cleaned_df, vectorizer, kmeans, nn):
-        obj = object.__new__(cls)
-        obj.df = cleaned_df.copy()
-        obj.vectorizer = vectorizer
-        obj.kmeans = kmeans
-        obj.nn = nn
-        return obj
-
-from invoice_style_tool import CorpusCorrector
-
 # Build corrector from cleaned corpus
 _corrector = CorpusCorrector(_cleaned['text'].astype(str).tolist(), max_edit=2)
 
@@ -71,6 +64,50 @@ class CachedStyler(InvoiceStyler):
         return obj
 
 styler = CachedStyler.from_artifacts(_cleaned, _vectorizer, _kmeans, _nn, _corrector)
+
+class SpellCheckIn(BaseModel):
+    text: str = Field(..., example="monterig af lamppu i køken ok")
+
+class SpellCheckOut(BaseModel):
+    original: str
+    corrected: str
+    suggestions: Dict[str, List[str]]
+    dictionary_size: Optional[int] = None
+
+@app.post("/check_spelling", response_model=SpellCheckOut, summary="Spell-check input text")
+def check_spelling(payload: SpellCheckIn):
+    """
+    Runs the general spell-checker on the provided text and returns
+    corrected output + alternative suggestions for each token.
+    """
+    text = payload.text.strip()
+    if not text:
+        return SpellCheckOut(original="", corrected="", suggestions={}, dictionary_size=None)
+
+    toks = text.split()
+    suggestions = {}
+    corrected_tokens = []
+
+    for t in toks:
+        corr = spell.correction(t) or t
+        corrected_tokens.append(corr)
+        # collect suggestions (candidates) if available
+        try:
+            cand = spell.candidates(t)
+            if len(cand) > 1 or corr != t:
+                suggestions[t] = list(cand)[:5]
+        except Exception:
+            pass
+
+    corrected = " ".join(corrected_tokens)
+    dictionary_size = get_spell_dictionary_size(spell)
+
+    return SpellCheckOut(
+        original=text,
+        corrected=corrected,
+        suggestions=suggestions,
+        dictionary_size=dictionary_size
+    )
 
 @app.get("/health")
 def health():
@@ -149,3 +186,6 @@ def reload_artifacts():
         _corrector = CorpusCorrector(_cleaned['text'].astype(str).tolist(), max_edit=2)
         styler = CachedStyler.from_artifacts(_cleaned, _vectorizer, _kmeans, _nn, _corrector)
         return {"status": "reloaded", "records": int(df.shape[0]), "k": int(k)}
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
