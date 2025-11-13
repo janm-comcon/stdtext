@@ -1,0 +1,26 @@
+paths:
+  raw_csv: "C:/Temp/text.csv"
+  scrubbed_csv: "C:/Temp/text_scrubbed.csv"
+  corrected_csv: "C:/Temp/text_corrected.csv"
+  da_dictionary: "C:/Temp/da_dictionary.txt"
+  abbrev_map: "C:/Temp/abbrev_map.json"
+  artifacts: "./artifacts"
+
+hunspell:
+  aff_path: ""
+  dic_path: ""
+
+extract:
+  keep_room_words: true
+  remove_numbers: true
+  remove_addresses: true
+  abbreviation_mode: "placeholder"  # placeholder | expand
+
+model:
+  lowercase_training: true
+  similarity_threshold: 0.72
+  n_clusters: null  # null -> auto (kmeans heuristic)
+  top_k_examples: 5
+
+output:
+  uppercase: true
