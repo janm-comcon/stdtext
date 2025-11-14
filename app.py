@@ -3,6 +3,10 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from pathlib import Path
 import yaml
+
+import sys
+sys.path.insert(1, "./stdtext")
+
 from stdtext.normalize import simple_normalize, extract_placeholders, reinsert_placeholders, remove_sensitive
 from stdtext.entity_scrubber import extract_entities, reinsert_entities
 from stdtext.spell import SpellWrapper
@@ -74,33 +78,81 @@ def check_spelling(payload: SpellIn):
 
 @app.post("/rewrite", response_model=RewriteOut)
 def rewrite(payload: RewriteIn):
+    from stdtext.count_utils import (
+        extract_counts_structured,
+        format_count_phrase,
+    )
+
     global corrector
-    t = payload.text or ""
-    norm = simple_normalize(t)
+
+    text = payload.text or ""
+
+    # 1) Basic normalization
+    norm = simple_normalize(text)
+
+    # 2) Abbreviation placeholders
     t1, map_abbr = extract_placeholders(norm)
+
+    # 3) Entity placeholders (names, addresses, companies, etc.)
     t2, map_ent = extract_entities(t1)
-    mapping = {**map_abbr, **map_ent}
-    # remove sensitive (numbers etc.)
+
+    # Base mapping
+    base_map = {**map_abbr, **map_ent}
+
+    # 4) Remove sensitive numbers — COUNT will be handled separately
     cleaned = remove_sensitive(t2, keep_room_words=True)
-    # spell-correct
-    toks = []
-    for tok in cleaned.split():
+
+    # 5) Spell-correct (but skip placeholders)
+    raw_tokens = cleaned.split()
+    corrected_tokens = []
+    for tok in raw_tokens:
         if tok.startswith("<") and tok.endswith(">"):
-            toks.append(tok)
+            corrected_tokens.append(tok)
         else:
-            toks.append(spell.correction(tok))
-    corrected_text = " ".join(toks)
+            corrected_tokens.append(spell.correction(tok))
+
+    # 6) COUNT extraction (after spell correct)
+    count_tokens, count_mapping = extract_counts_structured(corrected_tokens)
+
+    # Merge mappings
+    mapping = {
+        **base_map,
+        **count_mapping
+    }
+
+    corrected_text = " ".join(count_tokens)
+
+    # 7) corpus corrector
     examples = []
     final = corrected_text
     if corrector is not None:
         examples = corrector.query(corrected_text, top_k=payload.top_k)
         if examples:
             final = examples[0]
-    out = reinsert_entities(final, map_ent)
+
+    # 8) Reinsertion order:
+    #   entities → abbreviations → COUNT phrases → uppercase
+    out = final
+
+    # 1) entities
+    out = reinsert_entities(out, map_ent)
+
+    # 2) abbreviations
     out = reinsert_placeholders(out, map_abbr)
+
+    # 3) COUNT phrases — with normalized order (2 stk. lamper)
+    for key, info in count_mapping.items():
+        phrase = format_count_phrase(info)
+        out = out.replace(f"<{key}>", phrase)
+
+    # 4) UPPERCASE final style if configured
     if CFG["output"].get("uppercase", True):
         out = out.upper()
-    return {"rewrite": out, "nearest_examples": examples}
+
+    return {
+        "rewrite": out,
+        "nearest_examples": examples
+    }
 
 @app.post("/reload_artifacts")
 def reload_artifacts():
