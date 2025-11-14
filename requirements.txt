@@ -1,19 +1,15 @@
-# Core
 fastapi==0.111.0
 uvicorn[standard]==0.30.0
 
-# NLP & data
 scikit-learn==1.4.2
 numpy==1.26.4
 pandas==2.2.2
 joblib==1.4.2
 scipy==1.12.0
 
-# Spell checking
 pyspellchecker==0.8.1
 pywin32==306
 
-# Config
 PyYAML==6.0.1
 regex==2024.5.15
 python-dateutil==2.9.0.post0

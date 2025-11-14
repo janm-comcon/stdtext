@@ -14,12 +14,11 @@ extract:
   keep_room_words: true
   remove_numbers: true
   remove_addresses: true
-  abbreviation_mode: "placeholder"  # placeholder | expand
+  abbreviation_mode: "placeholder"
 
 model:
   lowercase_training: true
   similarity_threshold: 0.72
-  n_clusters: null  # null -> auto (kmeans heuristic)
   top_k_examples: 5
 
 output:

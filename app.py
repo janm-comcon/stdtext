@@ -1,22 +1,121 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
-from stdtext.normalize import simple_normalize, extract_placeholders, reinsert_placeholders
+# -*- coding: utf-8 -*-
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
+from pathlib import Path
+import yaml
+from stdtext.normalize import simple_normalize, extract_placeholders, reinsert_placeholders, remove_sensitive
 from stdtext.entity_scrubber import extract_entities, reinsert_entities
 from stdtext.spell import SpellWrapper
+from stdtext.model import CorpusCorrector
 
-app=FastAPI()
-spell=SpellWrapper()
+CONFIG_PATH = Path(__file__).parent / "stdtext" / "config.yaml"
+CFG = yaml.safe_load(CONFIG_PATH.read_text())
 
-class RewriteIn(BaseModel): text:str
-class RewriteOut(BaseModel): rewrite:str
+ART = Path(CFG["paths"]["artifacts"])
+ART.mkdir(exist_ok=True, parents=True)
 
-@app.post("/rewrite",response_model=RewriteOut)
-def rw(r:RewriteIn):
-    n=simple_normalize(r.text)
-    t1,m1=extract_placeholders(n)
-    t2,m2=extract_entities(t1)
-    toks=[spell.correction(x) for x in t2.split()]
-    out=" ".join(toks)
-    out=reinsert_entities(out,m2)
-    out=reinsert_placeholders(out,m1)
-    return {"rewrite":out.upper()}
+spell = SpellWrapper(da_dictionary_path=CFG["paths"]["da_dictionary"])
+
+corrector = None
+if (ART / "vectorizer.pkl").exists():
+    try:
+        corrector = CorpusCorrector.load(ART)
+    except Exception:
+        corrector = None
+
+app = FastAPI(title="StdText Production v3")
+
+class RewriteIn(BaseModel):
+    text: str = Field(...)
+    top_k: int = Field(3, ge=1, le=10)
+
+class RewriteOut(BaseModel):
+    rewrite: str
+    nearest_examples: list[str]
+
+class SpellIn(BaseModel):
+    text: str
+
+class SpellOut(BaseModel):
+    original: str
+    corrected: str
+    suggestions: dict
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "model_loaded": bool(corrector is not None)
+    }
+
+@app.post("/check_spelling", response_model=SpellOut)
+def check_spelling(payload: SpellIn):
+    t = payload.text or ""
+    norm = simple_normalize(t)
+    t1, map_abbr = extract_placeholders(norm)
+    t2, map_ent = extract_entities(t1)
+    toks = []
+    suggestions = {}
+    for tok in t2.split():
+        if tok.startswith("<") and tok.endswith(">"):
+            toks.append(tok)
+            continue
+        corr = spell.correction(tok)
+        toks.append(corr)
+        sugg = spell.suggestions(tok)
+        if sugg:
+            suggestions[tok] = sugg[:5]
+    corrected = " ".join(toks)
+    return {
+        "original": t,
+        "corrected": corrected,
+        "suggestions": suggestions
+    }
+
+@app.post("/rewrite", response_model=RewriteOut)
+def rewrite(payload: RewriteIn):
+    global corrector
+    t = payload.text or ""
+    norm = simple_normalize(t)
+    t1, map_abbr = extract_placeholders(norm)
+    t2, map_ent = extract_entities(t1)
+    mapping = {**map_abbr, **map_ent}
+    # remove sensitive (numbers etc.)
+    cleaned = remove_sensitive(t2, keep_room_words=True)
+    # spell-correct
+    toks = []
+    for tok in cleaned.split():
+        if tok.startswith("<") and tok.endswith(">"):
+            toks.append(tok)
+        else:
+            toks.append(spell.correction(tok))
+    corrected_text = " ".join(toks)
+    examples = []
+    final = corrected_text
+    if corrector is not None:
+        examples = corrector.query(corrected_text, top_k=payload.top_k)
+        if examples:
+            final = examples[0]
+    out = reinsert_entities(final, map_ent)
+    out = reinsert_placeholders(out, map_abbr)
+    if CFG["output"].get("uppercase", True):
+        out = out.upper()
+    return {"rewrite": out, "nearest_examples": examples}
+
+@app.post("/reload_artifacts")
+def reload_artifacts():
+    global corrector
+    import pandas as pd
+    src = Path(CFG["paths"]["corrected_csv"])
+    if not src.exists():
+        src = Path(CFG["paths"]["scrubbed_csv"])
+    if not src.exists():
+        raise HTTPException(status_code=404, detail=f"Source CSV not found: {src}")
+    df = pd.read_csv(src, encoding="utf-8")
+    text_col = max(df.columns, key=lambda c: df[c].astype(str).str.len().median())
+    texts = df[text_col].astype(str).tolist()
+    if CFG["model"].get("lowercase_training", True):
+        texts = [x.lower() for x in texts]
+    corrector = CorpusCorrector(texts=texts)
+    corrector.save(ART)
+    return {"status": "reloaded", "records": len(texts)}
