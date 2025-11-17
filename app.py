@@ -45,6 +45,13 @@ class SpellOut(BaseModel):
     corrected: str
     suggestions: dict
 
+corrector = None
+
+@app.on_event("startup")
+def startup_event():
+    global corrector
+    corrector = CorpusCorrector.load("./artifacts")
+
 @app.get("/health")
 def health():
     return {
@@ -77,32 +84,26 @@ def check_spelling(payload: SpellIn):
     }
 
 @app.post("/rewrite", response_model=RewriteOut)
-def rewrite(payload: RewriteIn):
-    from stdtext.count_utils import (
-        extract_counts_structured,
-        format_count_phrase,
-    )
+def rewrite(r: RewriteIn):
+    from stdtext.count_utils import extract_counts_structured, format_count_phrase
 
     global corrector
 
-    text = payload.text or ""
+    text_in = r.text or ""
 
-    # 1) Basic normalization
-    norm = simple_normalize(text)
+    # 1) normalize
+    norm = simple_normalize(text_in)
 
-    # 2) Abbreviation placeholders
+    # 2) abbreviations
     t1, map_abbr = extract_placeholders(norm)
 
-    # 3) Entity placeholders (names, addresses, companies, etc.)
+    # 3) entities
     t2, map_ent = extract_entities(t1)
 
-    # Base mapping
-    base_map = {**map_abbr, **map_ent}
-
-    # 4) Remove sensitive numbers — COUNT will be handled separately
+    # 4) remove sensitive numbers (keeps placeholders)
     cleaned = remove_sensitive(t2, keep_room_words=True)
 
-    # 5) Spell-correct (but skip placeholders)
+    # 5) spell-correct per token
     raw_tokens = cleaned.split()
     corrected_tokens = []
     for tok in raw_tokens:
@@ -111,48 +112,30 @@ def rewrite(payload: RewriteIn):
         else:
             corrected_tokens.append(spell.correction(tok))
 
-    # 6) COUNT extraction (after spell correct)
+    # 6) COUNT extraction after spell-correction
     count_tokens, count_mapping = extract_counts_structured(corrected_tokens)
-
-    # Merge mappings
-    mapping = {
-        **base_map,
-        **count_mapping
-    }
-
     corrected_text = " ".join(count_tokens)
 
-    # 7) corpus corrector
-    examples = []
+    # 7) CORPUS CORRECTOR (rehooked properly)
     final = corrected_text
+    examples = []
     if corrector is not None:
-        examples = corrector.query(corrected_text, top_k=payload.top_k)
+        examples = corrector.query(corrected_text, top_k=5)
         if examples:
-            final = examples[0]
+            final = examples[0]        # pick the best match
 
-    # 8) Reinsertion order:
-    #   entities → abbreviations → COUNT phrases → uppercase
-    out = final
-
-    # 1) entities
-    out = reinsert_entities(out, map_ent)
-
-    # 2) abbreviations
+    # 8) reinsertion: entities -> abbreviations -> COUNT
+    out = reinsert_entities(final, map_ent)
     out = reinsert_placeholders(out, map_abbr)
 
-    # 3) COUNT phrases — with normalized order (2 stk. lamper)
     for key, info in count_mapping.items():
         phrase = format_count_phrase(info)
         out = out.replace(f"<{key}>", phrase)
 
-    # 4) UPPERCASE final style if configured
-    if CFG["output"].get("uppercase", True):
-        out = out.upper()
+    # 9) uppercase final output
+    out = out.upper()
 
-    return {
-        "rewrite": out,
-        "nearest_examples": examples
-    }
+    return {"rewrite": out, "nearest_examples": examples}
 
 @app.post("/reload_artifacts")
 def reload_artifacts():

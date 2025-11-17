@@ -1,27 +1,64 @@
 # -*- coding: utf-8 -*-
-import pandas as pd, re, json
+"""
+abbrev_builder.py
+
+Builds a simple whitelist of Danish-style abbreviations from the corpus.
+
+Danish abbreviations are typically:
+  - 2 or 3 letters
+  - followed by a dot, e.g. "stk.", "udv.", "osv."
+
+Output:
+  C:/Temp/abbrev_map.json
+
+Format:
+  {
+    "stk.": 123,
+    "udv.": 45,
+    "osv.": 12,
+    ...
+  }
+
+No expansions are guessed, we only record which abbreviations occur
+and how often, so they can be treated as valid words (and not spell-corrected).
+"""
+
+import re
+import json
 from pathlib import Path
 from collections import Counter
 
-TOKEN_RE = re.compile(r"[A-Za-zÆØÅæøå]+")
-
-SRC = Path("C:/Temp/text_scrubbed.csv")
+SRC = Path("C:/Temp/text_scrubbed.csv")   # or text_corrected.csv if you prefer
 OUT = Path("C:/Temp/abbrev_map.json")
 
-if not SRC.exists():
-    print("Missing:", SRC)
-else:
+ABBR_RE = re.compile(r"\b([A-Za-zÆØÅæøå]{2,3}\.)\b", flags=re.UNICODE)
+
+
+def main():
+    if not SRC.exists():
+        print("Missing source CSV:", SRC)
+        return
+
+    import pandas as pd
+
     df = pd.read_csv(SRC, encoding="utf-8")
+    # Pick the text column by longest median length heuristic
     text_col = max(df.columns, key=lambda c: df[c].astype(str).str.len().median())
-    cnt = Counter()
+
+    counter = Counter()
+
     for line in df[text_col].astype(str):
-        for w in TOKEN_RE.findall(line):
-            cnt[w.lower()] += 1
-    vocab = set(cnt.keys())
-    amap = {}
-    for short in [w for w in vocab if 2 <= len(w) <= 4]:
-        candidates = [v for v in vocab if v.startswith(short) and len(v)-len(short) <= 6 and cnt[v] >= cnt[short]]
-        if candidates:
-            amap[short] = sorted(candidates, key=lambda v:(-cnt[v], -len(v)))[0]
-    OUT.write_text(json.dumps(amap, indent=2, ensure_ascii=False), encoding="utf-8")
-    print("Wrote", len(amap), "abbrev mappings to", OUT)
+        # Find all abbreviations like "stk.", "udv.", "osv."
+        for m in ABBR_RE.finditer(line):
+            abbr = m.group(1)
+            counter[abbr] += 1
+
+    # Filter out very rare abbreviations if you want (e.g. >= 2)
+    abbrev_map = {abbr: freq for abbr, freq in counter.items() if freq >= 1}
+
+    OUT.write_text(json.dumps(abbrev_map, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"Found {len(abbrev_map)} abbreviations. Written to {OUT}")
+
+
+if __name__ == "__main__":
+    main()
