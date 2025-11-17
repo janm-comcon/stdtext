@@ -3,6 +3,9 @@ from pathlib import Path
 import pandas as pd
 import csv
 
+import sys
+sys.path.insert(1, '../stdtext')
+
 from stdtext.normalize import simple_normalize, extract_placeholders, reinsert_placeholders, remove_sensitive
 from stdtext.entity_scrubber import extract_entities
 
@@ -15,7 +18,7 @@ def main():
         print("Missing source:", SRC)
         return
 
-    df = pd.read_csv(SRC, encoding="utf-8")
+    df = pd.read_csv(SRC, sep=",", engine="python", encoding="utf-8", on_bad_lines="skip")
     text_col = max(df.columns, key=lambda c: df[c].astype(str).str.len().median())
 
     scrubbed = []

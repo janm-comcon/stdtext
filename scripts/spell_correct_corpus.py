@@ -3,6 +3,10 @@
 import csv
 import json
 from pathlib import Path
+
+import sys
+sys.path.insert(1, '../stdtext')
+
 from stdtext.spell import SpellWrapper
 
 SRC = Path("C:/Temp/text_scrubbed.csv")

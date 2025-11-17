@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 from pathlib import Path
 import pandas as pd
+
+import sys
+sys.path.insert(1, '../stdtext')
+
 from stdtext.model import CorpusCorrector
 
 SRC = Path("C:/Temp/text_corrected.csv")
