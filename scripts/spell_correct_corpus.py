@@ -1,21 +1,8 @@
 # -*- coding: utf-8 -*-
-"""
-spell_correct_corpus.py
-
-Spell-corrects the corpus EXCEPT:
-  - abbreviations (2–3 letters + ".")
-  - abbreviations in abbrev_map.json
-  - placeholders like <CITY_0001>
-  - COUNT placeholders <COUNT_0001>
-"""
-
+"""Spell-correct the scrubbed corpus, preserving abbreviations and placeholders."""
 import csv
 import json
 from pathlib import Path
-
-import sys
-sys.path.insert(1, "../stdtext")
-
 from stdtext.spell import SpellWrapper
 
 SRC = Path("C:/Temp/text_scrubbed.csv")
@@ -35,10 +22,8 @@ def is_placeholder(tok: str) -> bool:
 
 def is_abbreviation(tok: str) -> bool:
     t = tok.lower()
-    # whitelist abbreviation?
     if t in ABBREVS:
         return True
-    # matches basic pattern: 2–3 letters + "."
     if len(t) <= 4 and t.endswith(".") and t[:-1].isalpha():
         return True
     return False
@@ -47,7 +32,6 @@ def is_abbreviation(tok: str) -> bool:
 def spell_fix_line(line: str, sp: SpellWrapper) -> str:
     tokens = line.split()
     fixed = []
-
     for tok in tokens:
         if is_placeholder(tok):
             fixed.append(tok)
@@ -55,16 +39,13 @@ def spell_fix_line(line: str, sp: SpellWrapper) -> str:
         if is_abbreviation(tok):
             fixed.append(tok)
             continue
-
-        # safe spell correction
         fixed.append(sp.correction(tok))
-
     return " ".join(fixed)
 
 
 def main():
     if not SRC.exists():
-        print("ERROR: Source CSV not found:", SRC)
+        print("Missing source:", SRC)
         return
 
     sp = SpellWrapper()
@@ -75,8 +56,6 @@ def main():
 
         header = next(reader)
         writer.writerow(header)
-
-        # detect text column
         text_col = max(range(len(header)), key=lambda i: len(header[i]))
 
         for row in reader:

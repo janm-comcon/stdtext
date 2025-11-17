@@ -1,19 +1,34 @@
 stdtext_v2 - redesigned invoice text normalization service (prototype)
 
 Layout:
-  stdtext/                - python package with core modules
-    config.yaml           - runtime configuration template
-    normalize.py          - extraction & normalization helpers
-    spell.py              - hunspell wrapper / fallback
-    model.py              - corpus corrector (TF-IDF + KMeans + NN)
-  app.py                  - FastAPI app (top-level)
-  scripts/                - helper scripts to build dict, scrub, rebuild, etc.
+  stdtext/
+    app.py
+    build.cmd
+    requirements.txt
+    artifacts/          ← empty (to be built from scratch)
+    scripts/
+      build_dict.py
+      scrub_csv.py
+      abbrev_builder.py
+      spell_correct_corpus.py
+      rebuild_artifacts.py
+    stdtext/
+      data/
+        danish_cities.txt
+      __init__.py
+      config.yaml
+      normalize.py
+      entity_scrubber.py
+      count_utils.py
+      spell.py
+      spell_msword.py
+      model.py
 
 Usage (high-level):
-  1) Copy raw CSV to C:/Temp/text.csv (comma separated)
-  2) python scripts/build_dict.py        -> builds C:/Temp/da_dictionary.txt
-  3) python scripts/scrub_csv.py         -> builds C:/Temp/text_scrubbed.csv (placeholders kept)
-  4) python scripts/spell_correct_corpus.py -> builds C:/Temp/text_corrected.csv
-  5) python scripts/abbrev_builder.py    -> builds C:/Temp/abbrev_map.json
-  6) python scripts/rebuild_artifacts.py -> builds ./artifacts (vectorizer, kmeans, nn)
-  7) python app.py                       -> starts FastAPI (or run via uvicorn app:app)
+
+1) py scripts\build_dict.py           -> C:/Temp/da_dictionary.txt
+2) py scripts\scrub_csv.py            -> C:/Temp/text_scrubbed.csv
+3) py scripts\abbrev_builder.py       -> C:/Temp/abbrev_map.json
+4) py scripts\spell_correct_corpus.py -> C:/Temp/text_corrected.csv
+5) py scripts\rebuild_artifacts.py    -> tdtext/artifacts/ with vectorizer.pkl, nn.pkl, cleaned.csv
+5) py app.py                          -> starts FastAPI (or run via uvicorn app:app)

@@ -3,6 +3,7 @@ import win32com.client
 import pythoncom
 import threading
 
+
 class MSWordSpellChecker:
     _local = threading.local()
 

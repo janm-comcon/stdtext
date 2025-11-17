@@ -1,6 +1,6 @@
 @echo off
 echo ==========================================
-echo   Setting up stdtext production v3 env
+echo   Setting up stdtext production v4 env
 echo ==========================================
 
 set PYTHON=python

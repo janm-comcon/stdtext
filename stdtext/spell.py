@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
 import json
 from pathlib import Path
-import logging
 
-# Optional spell backends
 try:
     from stdtext.spell_msword import MSWordSpellChecker
     MSWORD_AVAILABLE = True
@@ -18,19 +16,10 @@ except Exception:
 
 
 class SpellWrapper:
-    """
-    Unified spell correction:
-    - MS Word (preferred)
-    - PySpellChecker fallback
-    - Abbreviations skipped entirely
-    - Placeholders untouched
-    """
+    """Unified spell correction with abbreviation and placeholder handling."""
 
     def __init__(self, da_dictionary_path=None, abbrev_map_path="C:/Temp/abbrev_map.json"):
-
-        # ----------------------------------------------------------------------
-        # Load abbreviation whitelist
-        # ----------------------------------------------------------------------
+        # Abbreviations
         self.abbrevs = set()
         try:
             p = Path(abbrev_map_path)
@@ -40,20 +29,15 @@ class SpellWrapper:
         except Exception:
             self.abbrevs = set()
 
-        # ----------------------------------------------------------------------
-        # MS Word spell checker
-        # ----------------------------------------------------------------------
+        # MS Word
         self.msword = None
         if MSWORD_AVAILABLE:
             try:
-                import win32com.client
-                self.msword = win32com.client.Dispatch("Word.Application")
+                self.msword = MSWordSpellChecker()
             except Exception:
                 self.msword = None
 
-        # ----------------------------------------------------------------------
-        # PySpellChecker fallback
-        # ----------------------------------------------------------------------
+        # PySpellChecker
         self.sp = None
         if PYSPELL_AVAILABLE:
             try:
@@ -63,60 +47,51 @@ class SpellWrapper:
             except Exception:
                 self.sp = None
 
-    # ==========================================================================
-    # MAIN SPELL CORRECTION
-    # ==========================================================================
     def correction(self, token: str) -> str:
         if not token:
             return token
 
         tok_low = token.lower()
 
-        # --- Skip abbreviations entirely -------------------------------------
+        # Abbreviations
         if tok_low in self.abbrevs:
             return token
-
-        # --- Skip generic abbreviation shapes (2–3 letters + '.') -------------
         if len(tok_low) <= 4 and tok_low.endswith(".") and tok_low[:-1].isalpha():
             return token
 
-        # --- Skip placeholders -------------------------------------------------
+        # Placeholders
         if tok_low.startswith("<") and tok_low.endswith(">"):
             return token
 
-        # --- Try MS Word spell checker ----------------------------------------
+        # MS Word
         if self.msword:
             try:
-                result = self.msword.CheckSpelling(token)
-                if result is False:
-                    suggestions = self.msword.GetSpellingSuggestions(token)
-                    if suggestions:
-                        return suggestions[0].Name
-                return token
+                return self.msword.correction(token)
             except Exception:
                 pass
 
-        # --- Fallback: PySpellChecker -----------------------------------------
+        # PySpellChecker
         if self.sp:
             try:
-                if token in self.sp:     # already correct
+                if token in self.sp:
                     return token
                 return self.sp.correction(token)
             except Exception:
                 return token
 
-        # --- Fallback: do nothing ---------------------------------------------
         return token
 
-    # ==========================================================================
-    # GET SUGGESTIONS
-    # ==========================================================================
     def suggestions(self, token: str):
         if not token:
             return []
+        tok_low = token.lower()
+        if tok_low in self.abbrevs:
+            return []
+        if tok_low.startswith("<") and tok_low.endswith(">"):
+            return []
         if self.msword:
             try:
-                return [s.Name for s in self.msword.GetSpellingSuggestions(token)]
+                return self.msword.suggestions(token)
             except Exception:
                 pass
         if self.sp:

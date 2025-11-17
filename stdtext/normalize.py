@@ -4,12 +4,10 @@ import re
 from typing import Tuple, Dict
 from pathlib import Path
 
-# --- Abbreviation handling -----------------------------------------------------
-
 # Match abbreviations like: 2–3 letters + dot
 ABBR_EXTRACT_RE = re.compile(r'\b([A-Za-zÆØÅæøå]{2,3})\.', flags=re.IGNORECASE)
 
-# General abbreviation whitelist (from abbrev_builder.py)
+# Abbreviation whitelist (from abbrev_builder)
 ABBREV_LIST = set()
 try:
     p = Path("C:/Temp/abbrev_map.json")
@@ -19,24 +17,16 @@ try:
 except Exception:
     ABBREV_LIST = set()
 
-# --- Number removal used for scrubber -----------------------------------------
+# Number pattern (for scrubber)
 NUM_RE = re.compile(r'\b\d+[.,]?\d*(?:[xX*/-]\d+[.,]?\d*)*\b')
 
 
-# ==============================================================================
-# SIMPLE NORMALIZE: preserve abbreviations
-# ==============================================================================
 def simple_normalize(text: str) -> str:
-    """
-    Lowercase and collapse whitespace, but KEEP abbreviations:
-    - 'stk.', 'udv.', 'osv.', 'vvs.' etc.
-    - Any token in ABBREV_LIST
-    - Any 2–3 letter abbreviation ending with '.'
-    """
+    """Lowercase & collapse whitespace, but keep abbreviations intact."""
     if not text:
         return ""
 
-    # Basic cleanup
+    text = str(text)
     text = text.strip()
     text = text.replace("\t", " ")
     text = " ".join(text.split())
@@ -47,17 +37,16 @@ def simple_normalize(text: str) -> str:
     for tok in raw_tokens:
         tok_low = tok.lower()
 
-        # 1. Whitelist abbreviation?
+        # known abbreviation
         if tok_low in ABBREV_LIST:
             out_tokens.append(tok_low)
             continue
 
-        # 2. Matches generic abbreviation pattern?
+        # 2–3 letters + "." -> abbreviation
         if len(tok_low) <= 4 and tok_low.endswith(".") and tok_low[:-1].isalpha():
             out_tokens.append(tok_low)
             continue
 
-        # 3. Normal token cleaning for everything else
         cleaned = tok_low.strip(",;:!?()[]{}")
         if cleaned:
             out_tokens.append(cleaned)
@@ -65,14 +54,8 @@ def simple_normalize(text: str) -> str:
     return " ".join(out_tokens)
 
 
-# ==============================================================================
-# ABBREVIATION PLACEHOLDER EXTRACTION
-# (used BEFORE spell correction)
-# ==============================================================================
 def extract_placeholders(text: str) -> Tuple[str, Dict[str, str]]:
-    """
-    Replace abbreviations with placeholders like <ABBR_0001>
-    """
+    """Replace abbreviations with <ABBR_xxxx> placeholders."""
     mapping: Dict[str, str] = {}
     i = 0
 
@@ -80,7 +63,7 @@ def extract_placeholders(text: str) -> Tuple[str, Dict[str, str]]:
         nonlocal i
         i += 1
         key = f"ABBR_{i:04d}"
-        mapping[key] = m.group(1) + "."   # preserve dot
+        mapping[key] = m.group(1) + "."
         return f"<{key}>"
 
     new_text = ABBR_EXTRACT_RE.sub(repl, text)
@@ -94,14 +77,8 @@ def reinsert_placeholders(text: str, mapping: Dict[str, str]) -> str:
     return out
 
 
-# ==============================================================================
-# REMOVE SENSITIVE NUMBERS (for scrubber)
-# ==============================================================================
 def remove_sensitive(text: str, keep_room_words: bool = True) -> str:
-    """
-    Remove explicit numbers unless part of known placeholders.
-    Used in training scrubbing, not rewrite.
-    """
+    """Remove bare numbers (keep placeholders)."""
     t = NUM_RE.sub(" ", text)
     t = re.sub(r"\s+", " ", t).strip()
     return t
