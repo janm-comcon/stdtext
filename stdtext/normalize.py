@@ -28,7 +28,7 @@ def simple_normalize(text: str) -> str:
 
     text = str(text)
     text = text.strip()
-    text = text.replace("\t", " ")
+    text = text.replace("\t", " ").replace("\\n", " ").replace("\\r", " ")
     text = " ".join(text.split())
 
     raw_tokens = text.split()
