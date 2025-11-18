@@ -7,7 +7,7 @@ sys.path.insert(1, '../stdtext')
 
 from stdtext.model import CorpusCorrector
 
-SRC = Path("C:/Temp/text_corrected.csv")
+SRC = Path("C:/Temp/text_scrubbed.csv")
 ART = Path("./artifacts")
 
 
