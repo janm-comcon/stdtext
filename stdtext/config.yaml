@@ -6,3 +6,53 @@ openai:
 
 output:
   uppercase: true
+
+rules:
+  fuzzy_actions:
+    - action: "montering af"
+      base_word: "montering"
+      max_distance: 2
+
+    - action: "opsætning af"
+      base_word: "opsætning"
+      max_distance: 2
+
+    - action: "udskiftning af"
+      base_word: "udskiftning"
+      max_distance: 2
+
+    - action: "reparation af"
+      base_word: "reparation"
+      max_distance: 2
+
+    - action: "demontering af"
+      base_word: "demontering"
+      max_distance: 2
+
+    - action: "tilslutning af"
+      base_word: "tilslutning"
+      max_distance: 2
+
+    - action: "gennemgang af"
+      base_word: "gennemgang"
+      max_distance: 2
+
+    - action: "opmåling af"
+      base_word: "opmåling"
+      max_distance: 2
+
+    - action: "levering af"
+      base_word: "levering"
+      max_distance: 2
+
+    - action: "nedtagning af"
+      base_word: "nedtagning"
+      max_distance: 2
+
+    - action: "installation af"
+      base_word: "installation"
+      max_distance: 2
+
+    - action: "renovering af"
+      base_word: "renovering"
+      max_distance: 2

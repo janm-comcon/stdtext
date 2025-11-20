@@ -277,6 +277,7 @@ def extract_entities(text: str) -> Tuple[str, Dict[str, str]]:
 # ENTITY REINSERTION
 # ======================================================================
 def reinsert_entities(text: str, mapping: Dict[str, str]) -> str:
+    out = text
     for k, v in mapping.items():
         out = out.replace(f"<{k}>", v)
     return out
