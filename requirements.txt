@@ -1,13 +1,9 @@
 fastapi==0.111.0
 uvicorn[standard]==0.30.0
-
-scikit-learn==1.4.2
-numpy==1.26.4
-pandas==2.2.2
-joblib==1.4.2
-scipy==1.12.0
-
+pydantic==2.7.0
+PyYAML==6.0.1
 pyspellchecker==0.8.1
 pywin32==306
 
-PyYAML==6.0.1
+# OpenAI client (user must install and configure API key)
+openai>=1.40.0

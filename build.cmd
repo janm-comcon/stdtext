@@ -1,9 +1,7 @@
 @echo off
 echo ==========================================
-echo   Setting up stdtext production v4 env
+echo   Setting up stdtext clean env
 echo ==========================================
-
-set PYTHON=python
 
 echo Creating virtual environment...
 py -3.11 -m venv .venv

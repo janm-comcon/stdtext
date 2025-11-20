@@ -4,10 +4,10 @@ import re
 from typing import Tuple, Dict
 from pathlib import Path
 
-# Match abbreviations like: 2–3 letters + dot
-ABBR_EXTRACT_RE = re.compile(r'\b([A-Za-zÆØÅæøå]{2,3})\.', flags=re.IGNORECASE)
+# Abbreviation pattern: 2-3 letters + dot (e.g. stk., osv., udv.)
+ABBR_EXTRACT_RE = re.compile(r"\b([A-Za-zÆØÅæøå]{2,3})\.", flags=re.IGNORECASE)
 
-# Abbreviation whitelist (from abbrev_builder)
+# Optional abbreviation whitelist
 ABBREV_LIST = set()
 try:
     p = Path("C:/Temp/abbrev_map.json")
@@ -17,12 +17,12 @@ try:
 except Exception:
     ABBREV_LIST = set()
 
-# Number pattern (for scrubber)
-NUM_RE = re.compile(r'\b\d+[.,]?\d*(?:[xX*/-]\d+[.,]?\d*)*\b')
+# Number pattern used for scrubber (not for runtime rewrite)
+NUM_RE = re.compile(r"\b\d+[.,]?\d*(?:[xX*/-]\d+[.,]?\d*)*\b")
 
 
 def simple_normalize(text: str) -> str:
-    """Lowercase & collapse whitespace, but keep abbreviations intact."""
+    """Lowercase and collapse whitespace, but keep abbreviations intact."""
     if not text:
         return ""
 
@@ -37,12 +37,12 @@ def simple_normalize(text: str) -> str:
     for tok in raw_tokens:
         tok_low = tok.lower()
 
-        # known abbreviation
+        # Known abbreviation
         if tok_low in ABBREV_LIST:
             out_tokens.append(tok_low)
             continue
 
-        # 2–3 letters + "." -> abbreviation
+        # 2–3 letters + dot -> abbreviation
         if len(tok_low) <= 4 and tok_low.endswith(".") and tok_low[:-1].isalpha():
             out_tokens.append(tok_low)
             continue
@@ -78,7 +78,7 @@ def reinsert_placeholders(text: str, mapping: Dict[str, str]) -> str:
 
 
 def remove_sensitive(text: str, keep_room_words: bool = True) -> str:
-    """Remove bare numbers (keep placeholders)."""
+    """Remove bare numbers (used in training scrubber, not rewrite)."""
     t = NUM_RE.sub(" ", text)
     t = re.sub(r"\s+", " ", t).strip()
     return t
