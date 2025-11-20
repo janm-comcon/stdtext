@@ -26,6 +26,7 @@ app = FastAPI(title="StdText Rule-Based + OpenAI Rewrite Service")
 
 spell = SpellWrapper()
 
+global corrector
 
 class RewriteIn(BaseModel):
     text: str = Field(..., description="Raw invoice line")
@@ -51,10 +52,9 @@ class SpellOut(BaseModel):
     suggestions: Dict[str, List[str]]
 
 
-<<<<<<< HEAD
 def rule_based_rewrite(text: str, stages: Dict[str, Any]) -> str:
     """Pure rule-based pipeline, no OpenAI."""
-=======
+
 @app.get("/health")
 def health():
     return {
@@ -92,75 +92,10 @@ def check_spelling(payload: SpellIn):
 
 @app.post("/debug_rewrite")
 def debug_rewrite(payload: RewriteIn):
-    from stdtext.count_utils import extract_counts_structured, format_count_phrase
-
-    text_in = payload.text
+    text = payload.text
 
     stages = {}
 
-    # 1 Normalize
-    norm = simple_normalize(text_in)
-    stages["normalize"] = norm
-
-    # 2 Abbreviations
-    t1, map_abbr = extract_placeholders(norm)
-    stages["placeholders"] = t1
-    stages["placeholder_map"] = map_abbr
-
-    # 3 Entities
-    t2, map_ent = extract_entities(t1)
-    stages["entities"] = t2
-    stages["entity_map"] = map_ent
-
-    # 4 Remove numbers
-    t3 = remove_sensitive(t2, keep_room_words=True)
-    stages["remove_numbers"] = t3
-
-    # 5 Spell correction
-    raw_tokens = t3.split()
-    corr = []
-    for tok in raw_tokens:
-        if tok.startswith("<") and tok.endswith(">"):
-            corr.append(tok)
-        else:
-            corr.append(spell.correction(tok))
-    corrected = " ".join(corr)
-    stages["spell_correct"] = corrected
-
-    # 6 COUNT extraction
-    count_tokens, count_info = extract_counts_structured(corr)
-    t4 = " ".join(count_tokens)
-    stages["count_extract"] = t4
-    stages["count_info"] = count_info
-
-    # 7 Corpus correction
-    if corrector:
-        examples = corrector.query(t4, 3)
-        stages["corpus_examples"] = examples
-        final = examples[0] if examples else t4
-    else:
-        stages["corpus_examples"] = []
-        final = t4
-    stages["corpus_corrected"] = final
-
-    # 8 Reinsertion
-    out = reinsert_entities(final, map_ent)
-    out = reinsert_placeholders(out, map_abbr)
-    for key, info in count_info.items():
-        phrase = format_count_phrase(info)
-        out = out.replace(f"<{key}>", phrase)
-    stages["reinsert"] = out
-
-    return stages
-
-
-@app.post("/rewrite", response_model=RewriteOut)
-def rewrite(payload: RewriteIn):
-    global corrector
-
-    text_in = payload.text or ""
-
->>>>>>> 72ef65f3f4506166a87b2b565ed07f83a71a2716
     # 1) normalize
     norm = simple_normalize(text)
     stages["normalized"] = norm
@@ -170,7 +105,7 @@ def rewrite(payload: RewriteIn):
     stages["action_expanded"] = expanded
 
     # 2) abbreviations
-    t1, map_abbr = extract_placeholders(norm)
+    t1, map_abbr = extract_placeholders(expanded)
     stages["abbr_placeholders"] = t1
     stages["abbr_map"] = map_abbr
 
@@ -216,6 +151,56 @@ def rewrite(payload: RewriteIn):
     if CFG.get("output", {}).get("uppercase", True):
         out = out.upper()
     stages["final_rule_based"] = out
+    stages["reinsert"] = out
+
+    return stages
+
+
+@app.post("/rewrite", response_model=RewriteOut)
+def rewrite(payload: RewriteIn):
+
+    text = payload.text or ""
+
+    # 1) normalize
+    norm = simple_normalize(text)
+
+    # 2a) action expansion
+    expanded = apply_action_rules(norm)
+
+    # 2) abbreviations
+    t1, map_abbr = extract_placeholders(expanded)
+
+    # 3) entities
+    t2, map_ent = extract_entities(t1)
+
+    # 4) spell-correct
+    raw_tokens = t2.split()
+    corrected_tokens = []
+    for tok in raw_tokens:
+        if tok.startswith("<") and tok.endswith(">"):
+            corrected_tokens.append(tok)
+        else:
+            corrected_tokens.append(spell.correction(tok))
+
+    # 5) COUNT extraction
+    count_tokens, count_mapping = extract_counts_structured(corrected_tokens)
+
+    text_with_counts = " ".join(count_tokens)
+
+    # 6) rule-based patterns (ACTION AF OBJECT [LOCATION])
+    rule_text = apply_rewrite_patterns(count_tokens)
+
+    # 7) reinsertion: entities -> abbreviations -> COUNT
+    out = reinsert_entities(rule_text, map_ent)
+    out = reinsert_placeholders(out, map_abbr)
+
+    for key, info in count_mapping.items():
+        phrase = format_count_phrase(info)
+        out = out.replace(f"<{key}>", phrase)
+
+    # 8) uppercase final
+    if CFG.get("output", {}).get("uppercase", True):
+        out = out.upper()
 
     return out
 
