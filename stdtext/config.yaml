@@ -1,5 +1,5 @@
 openai:
-  api_key: "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" 
+  api_key: "sk-proj-eT..." 
   enabled: true
   model: "gpt-4o"
   reasoning_effort: "none"  # or low/medium/high
