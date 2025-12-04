@@ -4,6 +4,5 @@ pydantic==2.7.0
 PyYAML==6.0.1
 pyspellchecker==0.8.1
 pywin32==306
-
-# OpenAI client (user must install and configure API key)
-openai>=1.40.0
+dacy==2.7.6
+language-tool-python==2.7.1

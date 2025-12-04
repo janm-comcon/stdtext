@@ -1,22 +1,19 @@
 # -*- coding: utf-8 -*-
+import re
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import yaml
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
-from pathlib import Path
-import yaml
-from typing import List, Dict, Any, Optional
 
 from stdtext.normalize import simple_normalize, extract_placeholders, reinsert_placeholders
+from stdtext.count_utils import extract_counts_structured, format_count_phrase
 from stdtext.entity_scrubber import extract_entities, reinsert_entities
 from stdtext.spell import SpellWrapper
-from stdtext.count_utils import extract_counts_structured, format_count_phrase
 
 from stdtext.rules.patterns import apply_rewrite_patterns
 from stdtext.rules.actions import apply_action_rules
-
-try:
-    from openai import OpenAI
-except ImportError:  # OpenAI is optional
-    OpenAI = None
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -25,10 +22,29 @@ except ImportError:  # OpenAI is optional
 CONFIG_PATH = Path(__file__).parent / "stdtext" / "config.yaml"
 CFG = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
 
-app = FastAPI(title="StdText Rule-Based + OpenAI Rewrite Service")
+app = FastAPI(title="StdText Rule-Based Rewrite Service")
 
 # Spell checker initialized once
 spell = SpellWrapper()
+
+# DaCy and LanguageTool are optional but preferred
+try:
+    import dacy
+
+    dacy_model_name = CFG.get("nlp", {}).get("model", "small")
+    nlp = dacy.load(dacy_model_name)
+except Exception:
+    nlp = None
+
+try:
+    import language_tool_python
+
+    lt_lang = CFG.get("language_tool", {}).get("language", "da-DK")
+    lt = language_tool_python.LanguageTool(lt_lang)
+except Exception:
+    lt = None
+
+PLACEHOLDER_RE = re.compile(r"<[^>]+>")
 
 
 # ---------------------------------------------------------------------------
@@ -37,9 +53,6 @@ spell = SpellWrapper()
 
 class RewriteIn(BaseModel):
     text: str = Field(..., description="Raw invoice line")
-    use_openai: bool = Field(
-        False, description="Force OpenAI even if disabled in config"
-    )
 
 
 class RewriteOut(BaseModel):
@@ -66,13 +79,14 @@ class SpellOut(BaseModel):
 # ---------------------------------------------------------------------------
 
 def rule_based_rewrite(
-    text: str, stages: Optional[Dict[str, Any]] = None
+    text: str, stages: Optional[Dict[str, Any]] = None, uppercase: bool = True
 ) -> str:
     """
-    Pure rule-based pipeline, no OpenAI.
+    Pure rule-based pipeline.
 
     If a `stages` dict is provided, it will be populated with intermediate
-    results for debugging purposes.
+    results for debugging purposes. Uppercasing can be toggled for downstream
+    refinement steps.
     """
     if stages is None:
         stages = {}
@@ -128,8 +142,8 @@ def rule_based_rewrite(
 
     stages["reinserted"] = out
 
-    # 8) uppercase final
-    if CFG.get("output", {}).get("uppercase", True):
+    # 8) uppercase final if requested
+    if uppercase and CFG.get("output", {}).get("uppercase", True):
         out = out.upper()
 
     stages["final_rule_based"] = out
@@ -137,68 +151,67 @@ def rule_based_rewrite(
 
 
 # ---------------------------------------------------------------------------
-# OpenAI helper
+# DaCy + LanguageTool helpers
 # ---------------------------------------------------------------------------
 
-def openai_enhance(text_in: str, draft: str, stages: Dict[str, Any]) -> str:
-    """
-    Optionally call OpenAI to polish the rule-based rewrite.
-    Safe to call even when OpenAI is not configured.
-    """
-    if not CFG.get("openai", {}).get("enabled", False):
-        return draft
-    if OpenAI is None:
-        return draft
+def _mask_placeholders(text: str):
+    mapping: Dict[str, str] = {}
 
-    api_key = CFG.get("openai", {}).get("api_key")
-    if not api_key:
-        return draft
+    def repl(match: re.Match[str]):
+        key = f"PH_{len(mapping):04d}"
+        mapping[key] = match.group(0)
+        return key
 
-    client = OpenAI(api_key=api_key)
+    masked = PLACEHOLDER_RE.sub(repl, text)
+    return masked, mapping
 
-    model = CFG["openai"].get("model", "gpt-5.1-chat-latest")
-    reasoning_effort = CFG["openai"].get("reasoning_effort", "none")
 
-    prompt = (
-        "Du er en dansk tekst-normaliseringsassistent for fakturalinjer.\n"
-        "Du får en original tekst og et udkast fra en regelbaseret motor.\n"
-        "Din opgave er KUN at lave små justeringer for at gøre teksten mere naturlig,\n"
-        "men du må ikke ændre betydning, antal, datoer eller stednavne.\n"
-        "Returnér KUN én linje i HELT UPPERCASE, uden forklaring.\n\n"
-        f"ORIGINAL: {text_in}\n"
-        f"UDKAST: {draft}\n"
-        "SVAR:"
-    )
+def _unmask_placeholders(text: str, mapping: Dict[str, str]):
+    out = text
+    for k, v in mapping.items():
+        out = out.replace(k, v)
+    return out
 
+
+def dacy_refine(text: str, stages: Dict[str, Any]) -> str:
+    """Use DaCy lemmatization to smooth wording while preserving placeholders."""
+    if nlp is None:
+        return text
+
+    doc = nlp(text)
+    tokens: List[str] = []
+    for tok in doc:
+        if PLACEHOLDER_RE.fullmatch(tok.text):
+            tokens.append(tok.text)
+            continue
+        lemma = tok.lemma_.lower()
+        if lemma == "-pron-":
+            lemma = tok.text.lower()
+        tokens.append(lemma)
+
+    stages["dacy_tokens"] = tokens
+    refined = " ".join(tokens)
+    stages["dacy_refined"] = refined
+    return refined
+
+
+def language_tool_refine(text: str, stages: Dict[str, Any]) -> str:
+    """Run LanguageTool corrections without disturbing placeholders."""
+    if lt is None:
+        return text
+
+    masked, mapping = _mask_placeholders(text)
     try:
-        # Use Responses API if available, else chat completions
-        if hasattr(client, "responses"):
-            resp = client.responses.create(
-                model=model,
-                # reasoning={"effort": reasoning_effort},
-                input=prompt,
-            )
-            out_text = ""
-            for item in resp.output:
-                if hasattr(item, "content"):
-                    for c in item.content:
-                        if hasattr(c, "text"):
-                            out_text += c.text
-        else:
-            chat = client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            out_text = chat.choices[0].message.content
-        out_text = (out_text or "").strip()
-        stages["openai_output"] = out_text
-        if out_text:
-            return out_text
-    except Exception as e:
-        stages["openai_error"] = str(e)
+        matches = lt.check(masked)
+        stages["language_tool_matches"] = [m.ruleId for m in matches]
+        corrected = language_tool_python.utils.correct(masked, matches)
+    except Exception as exc:
+        stages["language_tool_error"] = str(exc)
+        return text
 
-    # Fallback to the rule-based draft on any error
-    return draft
+    unmasked = _unmask_placeholders(corrected, mapping)
+    stages["language_tool_refined"] = unmasked
+    return unmasked
 
 
 # ---------------------------------------------------------------------------
@@ -209,7 +222,8 @@ def openai_enhance(text_in: str, draft: str, stages: Dict[str, Any]) -> str:
 def health():
     return {
         "status": "ok",
-        "openai_enabled": CFG.get("openai", {}).get("enabled", False),
+        "dacy_ready": nlp is not None,
+        "language_tool_ready": lt is not None,
         "spell_ready": spell is not None,
     }
 
@@ -250,27 +264,27 @@ def rewrite(payload: RewriteIn):
     """
     Main rewrite endpoint.
 
-    Runs the rule-based pipeline, and optionally lets OpenAI polish the result
-    if enabled in the config or explicitly requested.
+    Runs the rule-based pipeline, then refines the text using
+    DaCy lemmatization and LanguageTool grammar/spell checks.
     """
     stages: Dict[str, Any] = {}
-    rule = rule_based_rewrite(payload.text, stages)
+    rule = rule_based_rewrite(payload.text, stages, uppercase=False)
 
-    use_openai = payload.use_openai or CFG.get("openai", {}).get("enabled", False)
-    if use_openai:
-        final = openai_enhance(payload.text, rule, stages)
-    else:
-        final = rule
+    refined = dacy_refine(rule, stages)
+    polished = language_tool_refine(refined, stages)
 
-    stages["final"] = final
-    return {"rewrite": final, "stages": stages}
+    if CFG.get("output", {}).get("uppercase", True):
+        polished = polished.upper()
+
+    stages["final"] = polished
+    return {"rewrite": polished, "stages": stages}
 
 
 @app.post("/debug_rewrite", response_model=RewriteOut)
 def debug_rewrite(payload: DebugIn):
     """
     Debug endpoint: always returns the pure rule-based pipeline output
-    plus all intermediate stages. Never calls OpenAI.
+    plus all intermediate stages. Skips DaCy/LanguageTool refinements.
     """
     stages: Dict[str, Any] = {}
     final = rule_based_rewrite(payload.text, stages)

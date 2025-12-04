@@ -1,11 +1,11 @@
-openai:
-  api_key: "sk-proj-eT..." 
-  enabled: true
-  model: "gpt-4o"
-  reasoning_effort: "none"  # or low/medium/high
-
 output:
   uppercase: true
+
+nlp:
+  model: "small"  # DaCy model size: small/medium/large
+
+language_tool:
+  language: "da-DK"
 
 rules:
   fuzzy_actions:
