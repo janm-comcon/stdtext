@@ -19,6 +19,13 @@ StdText is a FastAPI service that rewrites short invoice line texts using a rule
    pip install -r requirements.txt
    ```
 
+   If you want DaCy-backed refinement, make sure pip can reach the Hugging Face
+   wheel for the Danish transformer model. The dependency entry in
+   `requirements.txt` already points at the versioned wheel URL (for example,
+   `da_dacy_small_trf-0.2.0-py3-none-any.whl`). Using the versioned filename
+   avoids the `Invalid wheel filename (invalid version)` error that appears when
+   the wheel is downloaded without its version segment.
+
 ## Configuration
 
 Service behavior is configured in `stdtext/config.yaml`. You can enable optional OpenAI polishing, choose the model, and control whether responses are uppercased. The rule configuration also contains fuzzy action definitions used by the pipeline.
