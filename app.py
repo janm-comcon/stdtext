@@ -31,8 +31,9 @@ spell = SpellWrapper()
 try:
     import dacy
 
-    dacy_model_name = CFG.get("nlp", {}).get("model", "small")
-    nlp = dacy.load(dacy_model_name)
+    DACY_MODEL_NAME = "da_dacy_small_trf-0.2.0"
+    # dacy.download_model(DACY_MODEL_NAME)
+    nlp = dacy.load_model("small")
 except Exception:
     nlp = None
 
