@@ -19,12 +19,20 @@ StdText is a FastAPI service that rewrites short invoice line texts using a rule
    pip install -r requirements.txt
    ```
 
-   If you want DaCy-backed refinement, make sure pip can reach the Hugging Face
-   wheel for the Danish transformer model. The dependency entry in
-   `requirements.txt` already points at the versioned wheel URL (for example,
-   `da_dacy_small_trf-0.2.0-py3-none-any.whl`). Using the versioned filename
-   avoids the `Invalid wheel filename (invalid version)` error that appears when
-   the wheel is downloaded without its version segment.
+### Troubleshooting DaCy model downloads
+
+Newer versions of pip are strict about wheel filenames and will reject DaCy
+model wheels that do not include an explicit version number, raising an error
+like `ERROR: Invalid wheel filename (invalid version): 'da_dacy_small_trf-any-py3-none-any'`.
+If you run into this while installing a DaCy model manually, rename the file to
+include a version (for example `da_dacy_small_trf-0.1.0-py3-none-any.whl`) and
+install it with pip:
+
+```bash
+mv da_dacy_small_trf-any-py3-none-any.whl da_dacy_small_trf-0.1.0-py3-none-any.whl
+pip install da_dacy_small_trf-0.1.0-py3-none-any.whl
+```
+This keeps pip happy while still installing the same model artifact.
 
 ## Configuration
 

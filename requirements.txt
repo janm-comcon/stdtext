@@ -5,6 +5,7 @@ PyYAML==6.0.1
 pyspellchecker==0.8.1
 pywin32==306
 dacy==2.7.6
-# DaCy small transformer model (required for DaCy-enabled refinement)
-da_dacy_small_trf @ https://huggingface.co/chcaa/da_dacy_small_trf/resolve/main/da_dacy_small_trf-0.2.0-py3-none-any.whl
+# DaCy's default model is not published on PyPI. Install it directly from
+# Hugging Face to avoid pip 404s when trying to resolve an outdated wheel.
+da_dacy_small_trf @ https://huggingface.co/chcaa/da_dacy_small_trf/resolve/main/da_dacy_small_trf-any-py3-none-any.whl
 language-tool-python==2.7.1
