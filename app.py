@@ -31,10 +31,10 @@ spell = SpellWrapper()
 try:
     import dacy
 
-    DACY_MODEL_NAME = "da_dacy_small_trf-0.2.0"
+    DACY_MODEL_NAME = CFG.get("nlp", {}).get("model", "da_dacy_small_trf-0.2.0")
     nlp = dacy.load(DACY_MODEL_NAME)
 except Exception as exc:
-    print("Failed to load DaCy model. Using placeholder-only lemmatization.")
+    print("Failed to load DaCy. Using placeholder-only lemmatization.")
     print("Error:", exc)  
     nlp = None
 

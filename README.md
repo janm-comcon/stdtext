@@ -11,13 +11,21 @@ StdText is a FastAPI service that rewrites short invoice line texts using a rule
 
 1. Create and activate a Python 3.11 virtual environment:
    ```bash
-   python3.11 -m venv .venv
+   py -3.11 -m venv .venv
    source .venv/bin/activate
    ```
-2. Install dependencies:
+
+2. Install DaCy libraries:
    ```bash
-   pip install -r requirements.txt
+   py -m pip install dacy
+   py dacy_inst.py
    ```
+
+3. Install dependencies:
+   ```bash
+   py -m pip install -r requirements.txt
+   ```
+
 
 ### Troubleshooting DaCy model downloads
 
