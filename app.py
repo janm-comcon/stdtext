@@ -32,9 +32,10 @@ try:
     import dacy
 
     DACY_MODEL_NAME = "da_dacy_small_trf-0.2.0"
-    # dacy.download_model(DACY_MODEL_NAME)
-    nlp = dacy.load_model("small")
-except Exception:
+    nlp = dacy.load(DACY_MODEL_NAME)
+except Exception as exc:
+    print("Failed to load DaCy model. Using placeholder-only lemmatization.")
+    print("Error:", exc)  
     nlp = None
 
 try:
@@ -42,7 +43,9 @@ try:
 
     lt_lang = CFG.get("language_tool", {}).get("language", "da-DK")
     lt = language_tool_python.LanguageTool(lt_lang)
-except Exception:
+except Exception as exc:
+    print("Failed to load LanguageTool. Using placeholder-only grammar/spell checks.")
+    print("Error:", exc)  
     lt = None
 
 PLACEHOLDER_RE = re.compile(r"<[^>]+>")
@@ -291,3 +294,14 @@ def debug_rewrite(payload: DebugIn):
     final = rule_based_rewrite(payload.text, stages)
     stages["final"] = final
     return {"rewrite": final, "stages": stages}
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "app:app",
+        host="0.0.0.0",
+        port=8000,
+        workers=1,
+    )
